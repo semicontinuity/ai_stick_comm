@@ -7,11 +7,6 @@ func EncodeCoefficientsFileContents(contents []byte) []byte {
 }
 
 
-func encodeSlot(buffer []byte, offset int, code byte, value byte) {
-	buffer[offset] = value
-	buffer[offset + 1] = code
-}
-
 func makeHeader() []byte {
 	header := make([]byte, 0x264)	// 612 bytes
 	encodeSlot(header,0x10, 1, 0)

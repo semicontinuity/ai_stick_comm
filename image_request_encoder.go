@@ -1,9 +1,87 @@
 package ai_stick_comm
 
 // Converts [224x224 B-plane] [224x224 G-plane] [224x224 R-plane] image to HANDLE_IMAGE message for AI stick
-func MakeImageRequest(image []byte) []byte {
+func MakeImageRequest(byteAt0x14 byte, byteAt0x970 byte, byteAt0x974 byte, image []byte, headerPayload []byte) []byte {
 	encoded := encode(image)
-	var mode1header = []byte{
+	//var mode1header = makeMode1HeaderV3(byteAt0x14, byteAt0x970, byteAt0x974, headerPayload)
+	var mode1header = makeMode1HeaderV2()
+	//var mode1header = makeMode1Header()
+	padding := make([]byte, 1492)
+	// pad to 4KB with 0x00000300
+	for i := 0; i < len(padding); i = i + 4 {
+		padding[i+1] = 0x03
+	}
+
+	return append(append(mode1header, encoded...), padding...)
+}
+
+func makeMode1HeaderV3(byteAt0x14 byte, byteAt0x970 byte, byteAt0x974 byte, headerPayload []byte) []byte {
+	header := make([]byte, 0xa2c)
+
+	encodeSlot(header, 0x10, 5, 0)
+	encodeSlot(header, 0x14, 5, byteAt0x14)
+	encodeSlot(header, 0x18, 5, 0)
+	encodeSlot(header, 0x1c, 5, 0)
+
+	for i := 0; i < len(headerPayload); i++ {
+		v := headerPayload[i]
+		if i % 12 == 3 && v != 0 {
+			v = v | 0x80
+		}
+		encodeSlot(header, 0x20 + i*4, 5, v)
+	}
+	for j := 0; j < 8; j++ {
+		encodeSlot(header, 0x558 + j*4, 1, 0)
+	}
+
+	encodeSlot(header, 0x970, 4, byteAt0x970)
+	encodeSlot(header, 0x974, 4, byteAt0x974)
+	encodeSlot(header, 0x978, 4, 0)
+	encodeSlot(header, 0x97c, 4, 0)
+
+	encodeSlot(header, 0xa20, 3, 0)
+	encodeSlot(header, 0xa24, 3, 0)
+	encodeSlot(header, 0xa28, 3, 0)
+
+	return header
+}
+
+func makeMode1HeaderV2() []byte {
+	headerData := []byte {
+		'\x00', '\x04', '\x00', '\x00',
+
+		'\xe0', '\x10', '\x00', '\xc2',  '\x2d', '\x00', '\x00', '\x48',  '\x0e', '\x00', '\x00', '\x00',	// 040 | 08
+		'\x70', '\x40', '\x00', '\xc4',  '\x2d', '\x00', '\x00', '\x50',  '\x0e', '\x00', '\x00', '\x00',	// 040 | 10
+		'\x38', '\x80', '\x00', '\xc8',  '\x3d', '\x00', '\x00', '\x48',  '\xdd', '\x00', '\x00', '\x00',	// 040 | 08
+		'\x1c', '\x00', '\x01', '\xd0',  '\x3d', '\x00', '\x01', '\x00',  '\xdd', '\x00', '\x00', '\x00',	// 100 | 00
+		'\x0e', '\x00', '\x02', '\xd0',  '\x3d', '\x00', '\x00', '\x08',  '\xcd', '\x00', '\x00', '\x00',   // 000 | 08
+
+		'\x00', '\x00', '\x00', '\x00',  '\x00', '\x00', '\x00', '\x00',  '\x00', '\x00', '\x00', '\x00',
+		'\x00', '\x00', '\x00', '\x00',  '\x00', '\x00', '\x00', '\x00',  '\xaa', '\xaa', '\x00', '\x00',
+	}
+
+	header := make([]byte, 0xa2c)
+	for i := 0; i < len(headerData); i++ {
+		encodeSlot(header, 0x10 + i*4, 5, headerData[i])
+	}
+	for i := 0; i < 8; i++ {
+		encodeSlot(header, 0x558 + i*4, 1, 0)
+	}
+
+	encodeSlot(header, 0x970, 4, 0xa1)
+	encodeSlot(header, 0x974, 4, 0x0c)
+	encodeSlot(header, 0x978, 4, 0)
+	encodeSlot(header, 0x97c, 4, 0)
+
+	encodeSlot(header, 0xa20, 3, 0)
+	encodeSlot(header, 0xa24, 3, 0)
+	encodeSlot(header, 0xa28, 3, 0)
+
+	return header
+}
+
+func makeMode1Header() []byte {
+	return []byte{
 		// 000000
 		'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00',
 		'\x00', '\x05', '\x00', '\x00', '\x04', '\x05', '\x00', '\x00', '\x00', '\x05', '\x00', '\x00', '\x00', '\x05', '\x00', '\x00',
@@ -191,13 +269,6 @@ func MakeImageRequest(image []byte) []byte {
 
 		// size is 0x00a2c
 	}
-	padding := make([]byte, 1492)
-	// pad to 4KB with 0x00000300
-	for i := 0; i < len(padding); i = i + 4 {
-		padding[i+1] = 0x03
-	}
-
-	return append(append(mode1header, encoded...), padding...)
 }
 
 func encode(image []byte) []byte {
@@ -207,8 +278,7 @@ func encode(image []byte) []byte {
 	encoded := make([]byte, 4*3*224*224)
 	var i = 0
 	for x := 0; x < 16; x++ {
-	for y := 0; y < 16; y++ {
-
+		for y := 0; y < 16; y++ {
 			i = encodeTile(b, i, y, x, encoded)
 			i = encodeTile(g, i, y, x, encoded)
 			i = encodeTile(r, i, y, x, encoded)
